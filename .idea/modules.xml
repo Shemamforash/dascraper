@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../dascraper/.idea/dascraper.iml" filepath="$PROJECT_DIR$/../dascraper/.idea/dascraper.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/dascraper.iml" filepath="$PROJECT_DIR$/.idea/dascraper.iml" />
     </modules>
   </component>
 </project>
