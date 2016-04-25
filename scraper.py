@@ -35,8 +35,10 @@ def download_img(deviation_page, directory_to_save):
                 out = open(fullname, "wb")
                 out.write(file.read())
                 out.close()
+                return True
             except OSError:
-                return
+                return False
+    return False
 
 
 # Returns all valid urls from a gallery page that link to a deviation page
@@ -50,22 +52,35 @@ def get_image_urls(urls):
 
 def scrape_this_page(page_name):
     page = requests.get(page_name)
+    parent_dir = page_name[7:]
+    parent_dir = parent_dir.split('.')[0]
+    if page_name.endswith('/gallery/') or len(page_name.split("/")) < 3:
+        folder_name = parent_dir
+        parent_dir = ''
+    else:
+        str_arr = page_name.split('/')
+        folder_name = str_arr[len(str_arr) - 1]
+        folder_name = folder_name.split("?offset")[0]
     if page.status_code == requests.codes.ok:
         # If a folder on the desktop does not already exist for this given artist, create one, then set it as the
         # directory to save images to
-        if not os.path.isdir(os.path.expanduser('~\\Desktop\\' + artist_name)):
-            os.mkdir(os.path.expanduser('~\\Desktop\\' + artist_name))
-        target_directory = os.path.expanduser('~\\Desktop\\' + artist_name + '\\')
-        pictures = get_image_urls(html.fromstring(page.content).xpath('//a[not(ancestor::div[@class="gr-body"])]/@href'))
+        new_dir = os.path.expanduser('~\\Desktop\\' + folder_name)
+        if parent_dir != '':
+            new_dir = os.path.expanduser('~\\Desktop\\' + parent_dir + '\\' + folder_name)
+        if not os.path.isdir(os.path.expanduser(new_dir)):
+            os.mkdir(os.path.expanduser(new_dir))
+        target_directory = os.path.expanduser(new_dir)
+        pictures = get_image_urls(
+            html.fromstring(page.content).xpath('//a[not(ancestor::div[@class="gr-body"])]/@href'))
         downloaded_images = []
         for picture in pictures:
             # Make sure image has not already been downloaded, and that it is not simply a duplicate url with
             # the comments section open
             if picture not in downloaded_images and '#comments' not in picture:
-                print("Grabbed " + picture)
                 deviation_page = requests.get(picture)
-                download_img(deviation_page, target_directory)
-                downloaded_images.append(picture)
+                if download_img(deviation_page, target_directory):
+                    print("Grabbed " + picture)
+                    downloaded_images.append(picture)
     else:
         print('Bad Url')
     return len(downloaded_images)
@@ -78,21 +93,31 @@ def start_threading(number_of_pages, page_names):
     pool.join()
 
 
-def start():
+def grab_sub_folders(main_page):
+    sub_folders = html.fromstring(main_page).xpath('//div[@collect_dv=\'' + artist_name + '\']/div/div/a/@href')
+    searched_folders = []
+    for folder in sub_folders:
+        if folder in searched_folders:
+            continue
+        searched_folders.append(folder)
+        start(folder, True)
+
+
+def start(page_url, is_folder):
+    print(page_url)
     # Unless a second argument is supplied assume user wants to download images from all pages
     gallery_page_number = 0
     if len(sys.argv) > 2:
         gallery_page_number = int(sys.argv[2])
-    if len(sys.argv) > 1:
-        global artist_name
-        artist_name = sys.argv[1]
-    else:
-        print("Please supply a deviant's name as an argument.")
     # Use all_pages to store the number of gallery pages so that we can extract the number of pages in the
     # deviant's gallery
-    all_pages = html.fromstring(requests.get('http://' + artist_name + '.deviantart.com/gallery/').content).xpath(
+    page_content = requests.get(page_url).content
+    all_pages = html.fromstring(page_content).xpath(
         '//div[@id="gallery_pager"]/div/ul/li[@class="number"]/a//text()')
-    last_page = int(all_pages[len(all_pages) - 1])
+    if len(all_pages) == 0:
+        last_page = 1
+    else:
+        last_page = int(all_pages[len(all_pages) - 1])
     number_of_pages = last_page - gallery_page_number
 
     # page_names stores all the target urls that we want to scrape for images (i.e. each gallery page in a deviant's
@@ -102,11 +127,18 @@ def start():
     # deviations per page (24) multiplied by the page number. This will scrape all gallery pages.
     while gallery_page_number < last_page:
         offset = '?offset=' + str(24 * gallery_page_number)
-        current_page = 'http://' + artist_name + '.deviantart.com/gallery/' + offset
+        current_page = page_url + offset
         page_names.append(current_page)
         gallery_page_number += 1
-
     start_threading(number_of_pages, page_names)
+    if not is_folder:
+        grab_sub_folders(page_content)
     print("Finished!")
 
-start()
+
+if len(sys.argv) > 1:
+    global artist_name
+    artist_name = sys.argv[1]
+    start('http://' + artist_name + '.deviantart.com/gallery/', False)
+else:
+    print("Please supply a deviant's name as an argument.")
