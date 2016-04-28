@@ -3,6 +3,7 @@ import requests
 import urllib.request
 import os
 import sys
+import random
 from multiprocessing.dummy import Pool as ThreadPool
 
 artist_name = ''
@@ -31,6 +32,8 @@ def download_img(deviation_page, directory_to_save):
             # Piece it back together without the artist's name
             fullname = directory_to_save + img_name + '.' + file_ending
             # And write it to the directory
+            if os.path.isfile(fullname):
+                fullname = fullname.split('.')[0] + str(random.randrange(0, 100000)) + '.' + file_ending
             try:
                 out = open(fullname, "wb")
                 out.write(file.read())
@@ -50,26 +53,27 @@ def get_image_urls(urls):
     return valid_urls
 
 
+def get_folder(page_url):
+    page_url = page_url[7:]
+    outer_folder = page_url.split('.')[0]
+    cur_dir = ''
+    if len(page_url.split("/")) < 3:
+        cur_dir = '~\\Desktop\\' + outer_folder + "\\"
+    else:
+        str_arr = page_url.split("/")
+        inner_folder = str_arr[len(str_arr) - 1]
+        inner_folder = inner_folder.split("?offset")[0]
+        cur_dir = '~\\Desktop\\' + outer_folder + "\\" + inner_folder + "\\"
+    if not os.path.isdir(os.path.expanduser(cur_dir)):
+        os.mkdir(os.path.expanduser(cur_dir))
+    return os.path.expanduser(cur_dir)
+
+
 def scrape_this_page(page_name):
     page = requests.get(page_name)
-    parent_dir = page_name[7:]
-    parent_dir = parent_dir.split('.')[0]
-    if page_name.endswith('/gallery/') or len(page_name.split("/")) < 3:
-        folder_name = parent_dir
-        parent_dir = ''
-    else:
-        str_arr = page_name.split('/')
-        folder_name = str_arr[len(str_arr) - 1]
-        folder_name = folder_name.split("?offset")[0]
     if page.status_code == requests.codes.ok:
         # If a folder on the desktop does not already exist for this given artist, create one, then set it as the
         # directory to save images to
-        new_dir = os.path.expanduser('~\\Desktop\\' + folder_name)
-        if parent_dir != '':
-            new_dir = os.path.expanduser('~\\Desktop\\' + parent_dir + '\\' + folder_name)
-        if not os.path.isdir(os.path.expanduser(new_dir)):
-            os.mkdir(os.path.expanduser(new_dir))
-        target_directory = os.path.expanduser(new_dir)
         pictures = get_image_urls(
             html.fromstring(page.content).xpath('//a[not(ancestor::div[@class="gr-body"])]/@href'))
         downloaded_images = []
@@ -78,7 +82,7 @@ def scrape_this_page(page_name):
             # the comments section open
             if picture not in downloaded_images and '#comments' not in picture:
                 deviation_page = requests.get(picture)
-                if download_img(deviation_page, target_directory):
+                if download_img(deviation_page, get_folder(page_name)):
                     print("Grabbed " + picture)
                     downloaded_images.append(picture)
     else:
@@ -94,7 +98,7 @@ def start_threading(number_of_pages, page_names):
 
 
 def grab_sub_folders(main_page):
-    sub_folders = html.fromstring(main_page).xpath('//div[@collect_dv=\'' + artist_name + '\']/div/div/a/@href')
+    sub_folders = html.fromstring(main_page).xpath('//div[@class="stream col-thumbs"]/div/div/div/a/@href')
     searched_folders = []
     for folder in sub_folders:
         if folder in searched_folders:
@@ -138,7 +142,10 @@ def start(page_url, is_folder):
 
 if len(sys.argv) > 1:
     global artist_name
-    artist_name = sys.argv[1]
-    start('http://' + artist_name + '.deviantart.com/gallery/', False)
+    artist_names = sys.argv[1]
+    artist_names.replace("\"", "")
+    artist_names = artist_names.split(",")
+    for artist_name in artist_names:
+        start('http://' + artist_name + '.deviantart.com/gallery/', False)
 else:
     print("Please supply a deviant's name as an argument.")
